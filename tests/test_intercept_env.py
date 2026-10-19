@@ -165,4 +165,13 @@ def test_invalid_config_raises(kwargs):
 
 def test_unsupported_render_mode_raises():
     with pytest.raises(ValueError):
-        InterceptEnv(render_mode="human")
+        InterceptEnv(render_mode="ansi")
+
+
+def test_rgb_array_render():
+    env = InterceptEnv(render_mode="rgb_array")
+    env.reset(seed=0)
+    env.step(ZERO_ACTION)
+    frame = env.render()
+    assert frame.ndim == 3 and frame.shape[2] == 3 and frame.dtype == np.uint8
+    env.close()
