@@ -91,12 +91,11 @@ class InterceptConfig:
         return self.sim_steps_per_action / self.sim_hz
 
 
-class EndReason(StrEnum):  # NOTE: check if needed
+class EndReason(StrEnum):
     SUCCESS = "success"
     CRASH = "crash"
     NUMERICAL_ERROR = "numerical_error"
     SIM_FAILURE = "sim_failure"
-    TIMEOUT = "timeout"
 
 
 # ---------------------------------------------------------------------------
@@ -147,8 +146,8 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
     ``success_bonus`` on reaching the target or minus ``failure_penalty`` on
     crash, numerical error or simulator failure.
 
-    Info: ``distance_m``, ``end_reason`` (:class:`EndReason` or None) and
-    ``sim_time_s``.
+    Info: ``distance_m``, ``end_reason`` (:class:`EndReason`, or None while
+    running or on truncation), ``is_success`` and ``sim_time_s``.
     """
 
     metadata = {"render_modes": []}
@@ -289,8 +288,6 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
         self._steps += 1
         terminated = reason is not None
         truncated = not terminated and self._steps >= cfg.max_episode_steps
-        if truncated:
-            reason = EndReason.TIMEOUT
         self._episode_over = terminated or truncated
 
         return obs, float(reward), terminated, truncated, self._info(distance, reason)
@@ -385,5 +382,6 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
         return {
             "distance_m": distance,
             "end_reason": reason,
+            "is_success": reason is EndReason.SUCCESS,
             "sim_time_s": self._fdm["simulation/sim-time-sec"],
         }

@@ -70,7 +70,8 @@ def test_zero_action_holds_trim_until_timeout(env):
         if terminated or truncated:
             break
     assert truncated and not terminated
-    assert info["end_reason"] is EndReason.TIMEOUT
+    assert info["end_reason"] is None
+    assert not info["is_success"]
     assert abs(obs[8] - start_agl) < 100.0  # roughly level flight
 
 
@@ -80,6 +81,7 @@ def test_success_when_target_straight_ahead(env):
     )
     assert terminated
     assert info["end_reason"] is EndReason.SUCCESS
+    assert info["is_success"]
     assert info["distance_m"] < env.config.success_radius_m
     assert total > env.config.success_bonus
 
@@ -91,6 +93,7 @@ def test_crash_on_full_nose_down():
     )
     assert terminated
     assert info["end_reason"] is EndReason.CRASH
+    assert not info["is_success"]
     assert last_reward < -env.config.failure_penalty + 1.0
 
 
