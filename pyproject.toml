@@ -14,6 +14,8 @@ dependencies = [
   "jsbsim>=1.2",
   "matplotlib>=3.8",
   "numpy>=1.26",
+  "tensorboard>=2.15",
+  "tensorboardX>=2.6",
 ]
 
 [project.optional-dependencies]
