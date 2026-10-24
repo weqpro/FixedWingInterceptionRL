@@ -1,12 +1,8 @@
-"""
-from plot3d import plot_paths, animate_paths
+"""3D flight visualisation: builds interactive HTML pages from ready-made trajectories.
 
-plane = [[0, 0, 100], [20, 1, 101], [40, 3, 103], ...]   # (x, y, z) per sample, metres
-target = [[300, 50, 90], [298, 51, 90], ...]
-
-plot_paths({"plane": plane, "target": target}, out="flight.html")
-animate_paths({"plane": plane, "target": target}, dt=0.032, out="flight_live.html")
+Pure plotting library: no simulation, no env imports.
 """
+
 import webbrowser
 from pathlib import Path
 
@@ -114,14 +110,3 @@ def animate_paths(paths, dt=0.1, out="paths_live.html", title="", frame="enu", s
             dict(label=f"{k * dt:.1f}", method="animate",
                  args=[[str(k)], dict(frame=dict(duration=0, redraw=True), mode="immediate")]) for k in steps])])
     return _save(fig, out, show)
-
-
-if __name__ == "__main__":
-    # demo: a plane turning toward a target that drifts east
-    t = np.arange(0, 20, 0.1)
-    plane = np.stack([20 * t * np.cos(0.04 * t), 20 * t * np.sin(0.04 * t), 100 + 2 * np.sin(0.5 * t)], -1)
-    target = np.stack([300 + 3 * t, 120 + 0 * t, 95 + 0 * t], -1)
-    waypoints = [[0, 0, 100], [150, 40, 100], [300, 120, 95]]
-    print(plot_paths({"plane": plane, "target": target}, points={"waypoints": waypoints}, out="demo.html",
-                     title="plot3d demo"))
-    print(animate_paths({"plane": plane, "target": target}, dt=0.1, out="demo_live.html", title="plot3d demo"))
