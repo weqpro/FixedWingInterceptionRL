@@ -402,6 +402,8 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
             "end_reason": reason,
             "is_success": reason is EndReason.SUCCESS,
             "sim_time_s": self._fdm["simulation/sim-time-sec"],
+            "aircraft_ned_m": self._aircraft_ned(),   # new
+            "target_ned_m": self._target_ned.copy(),  # new
         }
 
     def _record_frame(self, reason: EndReason | None, *, new_episode: bool = False) -> None:
