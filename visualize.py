@@ -27,7 +27,6 @@ if __name__ == "__main__":
 
     title = f"{info['end_reason']}, distance = {info['distance_m']:.0f} m"
 
-    # static 3D view (rotate with the mouse)
     plot_paths(
         {"plane": plane},
         points={"target": [target]},
@@ -36,7 +35,6 @@ if __name__ == "__main__":
         frame="ned",
     )
 
-    # animation: the target stays in place, so repeat its point for every sample
     target_path = np.tile(target, (len(plane), 1))
     animate_paths(
         {"plane": plane, "target": target_path},

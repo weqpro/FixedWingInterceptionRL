@@ -7,6 +7,7 @@ target = [[300, 50, 90], [298, 51, 90], ...]
 plot_paths({"plane": plane, "target": target}, out="flight.html")
 animate_paths({"plane": plane, "target": target}, dt=0.032, out="flight_live.html")
 """
+
 import webbrowser
 from pathlib import Path
 
@@ -38,9 +39,13 @@ def _scene(arrays, margin=10.0):
     allp = np.concatenate(arrays)
     lo, hi = allp.min(0) - margin, allp.max(0) + margin
     span = hi - lo
-    return dict(xaxis=dict(range=[lo[0], hi[0]], title="East m"), yaxis=dict(range=[lo[1], hi[1]], title="North m"),
-                zaxis=dict(range=[lo[2], hi[2]], title="Up m"), aspectmode="manual",
-                aspectratio=dict(x=1, y=span[1] / span[0], z=span[2] / span[0]))
+    return dict(
+        xaxis=dict(range=[lo[0], hi[0]], title="East m"),
+        yaxis=dict(range=[lo[1], hi[1]], title="North m"),
+        zaxis=dict(range=[lo[2], hi[2]], title="Up m"),
+        aspectmode="manual",
+        aspectratio=dict(x=1, y=span[1] / span[0], z=span[2] / span[0]),
+    )
 
 
 def _save(fig, out, show):
@@ -60,22 +65,54 @@ def plot_paths(paths, points=None, out="paths.html", title="", frame="enu", show
     """
     fig, arrays = go.Figure(), []
     for i, (name, p) in enumerate(_named(paths)):
-        a = _points(p, frame); arrays.append(a)
+        a = _points(p, frame)
+        arrays.append(a)
         color = COLORS[i % len(COLORS)]
-        fig.add_trace(go.Scatter3d(x=a[:, 0], y=a[:, 1], z=a[:, 2], mode="lines", name=name,
-                                   line=dict(width=5, color=color)))
-        fig.add_trace(go.Scatter3d(x=a[:1, 0], y=a[:1, 1], z=a[:1, 2], mode="markers", showlegend=False,
-                                   marker=dict(size=5, color=color), hovertext=f"{name} start", hoverinfo="text"))
+        fig.add_trace(
+            go.Scatter3d(
+                x=a[:, 0],
+                y=a[:, 1],
+                z=a[:, 2],
+                mode="lines",
+                name=name,
+                line=dict(width=5, color=color),
+            )
+        )
+        fig.add_trace(
+            go.Scatter3d(
+                x=a[:1, 0],
+                y=a[:1, 1],
+                z=a[:1, 2],
+                mode="markers",
+                showlegend=False,
+                marker=dict(size=5, color=color),
+                hovertext=f"{name} start",
+                hoverinfo="text",
+            )
+        )
     for j, (name, p) in enumerate(_named(points)):
-        a = _points(p, frame); arrays.append(a)
-        fig.add_trace(go.Scatter3d(x=a[:, 0], y=a[:, 1], z=a[:, 2], mode="markers", name=name,
-                                   marker=dict(size=4, color=COLORS[(j + 4) % len(COLORS)])))
+        a = _points(p, frame)
+        arrays.append(a)
+        fig.add_trace(
+            go.Scatter3d(
+                x=a[:, 0],
+                y=a[:, 1],
+                z=a[:, 2],
+                mode="markers",
+                name=name,
+                marker=dict(size=4, color=COLORS[(j + 4) % len(COLORS)]),
+            )
+        )
     fig.update_layout(title=title, scene=_scene(arrays), legend=dict(x=0, y=1))
     return _save(fig, out, show)
 
 
-def animate_paths(paths, dt=0.1, out="paths_live.html", title="", frame="enu", stride=1, trail=True, show=True):
-    """Real-time playback: every path is a moving object sampled every dt seconds (shorter paths stop at their end).
+def animate_paths(
+    paths, dt=0.1, out="paths_live.html", title="", frame="enu", stride=1, trail=True, show=True
+):
+    """Real-time playback: every path is a moving object sampled every dt seconds.
+
+    Shorter paths stop at their end.
 
     paths:  {name: points} or [points, ...], sample k of every path is at time k * dt
     stride: draw every stride-th sample (keeps big files light; playback stays real-time)
@@ -91,37 +128,118 @@ def animate_paths(paths, dt=0.1, out="paths_live.html", title="", frame="enu", s
         for i, (name, a) in enumerate(named):
             e = min(k, len(a) - 1)
             color = COLORS[i % len(COLORS)]
-            seg = a[:e + 1] if trail else a[e:e + 1]
-            data.append(go.Scatter3d(x=seg[:, 0], y=seg[:, 1], z=seg[:, 2], mode="lines",
-                                     line=dict(width=4, color=color), showlegend=False))
-            data.append(go.Scatter3d(x=a[e:e + 1, 0], y=a[e:e + 1, 1], z=a[e:e + 1, 2], mode="markers+text",
-                                     text=[name], marker=dict(size=6, color=color), textfont=dict(color=color),
-                                     showlegend=False))
+            seg = a[: e + 1] if trail else a[e : e + 1]
+            data.append(
+                go.Scatter3d(
+                    x=seg[:, 0],
+                    y=seg[:, 1],
+                    z=seg[:, 2],
+                    mode="lines",
+                    line=dict(width=4, color=color),
+                    showlegend=False,
+                )
+            )
+            data.append(
+                go.Scatter3d(
+                    x=a[e : e + 1, 0],
+                    y=a[e : e + 1, 1],
+                    z=a[e : e + 1, 2],
+                    mode="markers+text",
+                    text=[name],
+                    marker=dict(size=6, color=color),
+                    textfont=dict(color=color),
+                    showlegend=False,
+                )
+            )
         return data
 
-    status = lambda k: f"{title}<br>t = {k * dt:.1f} s" if title else f"t = {k * dt:.1f} s"
-    fig = go.Figure(data=frame_data(0), frames=[go.Frame(data=frame_data(k), name=str(k),
-                                                         layout=dict(title=status(k))) for k in steps])
+    def status(k):
+        return f"{title}<br>t = {k * dt:.1f} s" if title else f"t = {k * dt:.1f} s"
+
+    fig = go.Figure(
+        data=frame_data(0),
+        frames=[
+            go.Frame(data=frame_data(k), name=str(k), layout=dict(title=status(k))) for k in steps
+        ],
+    )
     ms = stride * dt * 1000
-    play = lambda speed: dict(label=f"▶ {speed}x", method="animate", args=[None, dict(
-        frame=dict(duration=ms / speed, redraw=True), transition=dict(duration=0), fromcurrent=True)])
+
+    def play(speed):
+        return dict(
+            label=f"▶ {speed}x",
+            method="animate",
+            args=[
+                None,
+                dict(
+                    frame=dict(duration=ms / speed, redraw=True),
+                    transition=dict(duration=0),
+                    fromcurrent=True,
+                ),
+            ],
+        )
+
     fig.update_layout(
-        title=status(0), scene=_scene([a for _, a in named]),
-        updatemenus=[dict(type="buttons", direction="left", x=0, y=0, xanchor="left", yanchor="top", buttons=[
-            play(1), play(0.25), dict(label="❚❚", method="animate",
-                                      args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate")])])],
-        sliders=[dict(x=0.25, len=0.75, y=0, currentvalue=dict(prefix="t = ", suffix=" s"), steps=[
-            dict(label=f"{k * dt:.1f}", method="animate",
-                 args=[[str(k)], dict(frame=dict(duration=0, redraw=True), mode="immediate")]) for k in steps])])
+        title=status(0),
+        scene=_scene([a for _, a in named]),
+        updatemenus=[
+            dict(
+                type="buttons",
+                direction="left",
+                x=0,
+                y=0,
+                xanchor="left",
+                yanchor="top",
+                buttons=[
+                    play(1),
+                    play(0.25),
+                    dict(
+                        label="❚❚",
+                        method="animate",
+                        args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate")],
+                    ),
+                ],
+            )
+        ],
+        sliders=[
+            dict(
+                x=0.25,
+                len=0.75,
+                y=0,
+                currentvalue=dict(prefix="t = ", suffix=" s"),
+                steps=[
+                    dict(
+                        label=f"{k * dt:.1f}",
+                        method="animate",
+                        args=[
+                            [str(k)],
+                            dict(frame=dict(duration=0, redraw=True), mode="immediate"),
+                        ],
+                    )
+                    for k in steps
+                ],
+            )
+        ],
+    )
     return _save(fig, out, show)
 
 
 if __name__ == "__main__":
-    # demo: a plane turning toward a target that drifts east
     t = np.arange(0, 20, 0.1)
-    plane = np.stack([20 * t * np.cos(0.04 * t), 20 * t * np.sin(0.04 * t), 100 + 2 * np.sin(0.5 * t)], -1)
+    plane = np.stack(
+        [20 * t * np.cos(0.04 * t), 20 * t * np.sin(0.04 * t), 100 + 2 * np.sin(0.5 * t)], -1
+    )
     target = np.stack([300 + 3 * t, 120 + 0 * t, 95 + 0 * t], -1)
     waypoints = [[0, 0, 100], [150, 40, 100], [300, 120, 95]]
-    print(plot_paths({"plane": plane, "target": target}, points={"waypoints": waypoints}, out="demo.html",
-                     title="plot3d demo"))
-    print(animate_paths({"plane": plane, "target": target}, dt=0.1, out="demo_live.html", title="plot3d demo"))
+    print(
+        plot_paths(
+            {"plane": plane, "target": target},
+            points={"waypoints": waypoints},
+            out="demo.html",
+            title="plot3d demo",
+        )
+    )
+    print(
+        animate_paths(
+            {"plane": plane, "target": target}, dt=0.1, out="demo_live.html", title="plot3d demo"
+        )
+    )

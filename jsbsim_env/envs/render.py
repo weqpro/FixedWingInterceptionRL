@@ -21,7 +21,7 @@ class InterceptRenderer:
             self._plt = plt
             plt.ion()
             self.fig = plt.figure(figsize=(11, 5), layout="constrained")
-        else:  # rgb_array: offscreen, no window
+        else:
             self.fig = Figure(figsize=(11, 5), layout="constrained")
             FigureCanvasAgg(self.fig)
         self.ax_top, self.ax_alt = self.fig.subplots(1, 2, gridspec_kw={"width_ratios": [1.4, 1]})
@@ -54,7 +54,6 @@ class InterceptRenderer:
         t, e, n, h = map(np.asarray, (self._t, self._east, self._north, self._alt))
         t_n, t_e, t_alt = self._target_ned[0], self._target_ned[1], -self._target_ned[2]
 
-        # --- top-down view (x = East, y = North) ---
         ax = self.ax_top
         ax.clear()
         ax.plot(e, n, color="tab:blue", lw=1.5)
@@ -63,7 +62,11 @@ class InterceptRenderer:
         ax.plot(t_e, t_n, "x", color="tab:red", ms=8, label="target")
         # triangle rotated by heading (clockwise from North)
         ax.plot(
-            e[-1], n[-1], ls="none", color="tab:blue", ms=16,
+            e[-1],
+            n[-1],
+            ls="none",
+            color="tab:blue",
+            ms=16,
             marker=(3, 0, -np.degrees(self._heading_rad)),
         )
         xs = np.append(e, [t_e - r, t_e + r])
@@ -78,7 +81,6 @@ class InterceptRenderer:
         ax.grid(alpha=0.3)
         ax.legend(loc="upper right")
 
-        # --- altitude profile ---
         ax = self.ax_alt
         ax.clear()
         ax.plot(t, h, color="tab:blue", lw=1.5, label="aircraft")
