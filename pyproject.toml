@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["jsbsim_env"]
+
+[project]
+name = "fixed_wing_interception_rl"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "gymnasium>=1.0",
+  "jsbsim>=1.2",
+  "plotly>=5.18",
+  "numpy>=1.26",
+  "tensorboard>=2.15",
+  "tensorboardX>=2.6",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pre-commit",
+  "pytest",
+  "ruff",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "NPY"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
