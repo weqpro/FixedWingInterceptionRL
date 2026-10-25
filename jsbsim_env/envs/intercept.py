@@ -1,8 +1,12 @@
 """Fixed-wing interception of a stationary target, simulated with JSBSim.
 
-The agent controls aileron and elevator as deltas around the level-flight trim
-and must fly the aircraft into a sphere around the target before running out of
-time or hitting the ground.
+The agent controls aileron, elevator, rudder and throttle around the
+level-flight trim and must fly the aircraft into a sphere around the target
+before running out of time or hitting the ground.
+
+The world is a flat, non-rotating earth with constant gravity (see
+``flat_earth.xml``), and positions are plain Cartesian NED in metres with the
+origin on the ground below the start point.
 """
 
 from __future__ import annotations
@@ -10,6 +14,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
@@ -19,48 +24,42 @@ from gymnasium import spaces
 
 FT_TO_M = 0.3048
 
-# WGS84 ellipsoid
-_WGS84_A = 6_378_137.0
-_WGS84_F = 1.0 / 298.257223563
-_WGS84_E2 = _WGS84_F * (2.0 - _WGS84_F)
+_PLANET_FILE = Path(__file__).with_name("flat_earth.xml")
+
+
+def _segment_point_distance(p0: np.ndarray, p1: np.ndarray, q: np.ndarray) -> float:
+    """Distance from point ``q`` to the segment ``p0 -> p1``."""
+    seg = p1 - p0
+    seg_sq = float(seg @ seg)
+    t = 0.0 if seg_sq == 0.0 else min(1.0, max(0.0, float((q - p0) @ seg) / seg_sq))
+    return float(np.linalg.norm(q - (p0 + t * seg)))
 
 
 @dataclass(frozen=True)
 class InterceptConfig:
     """All tunables of :class:`InterceptEnv`."""
 
-    # Aircraft and initial conditions
     aircraft: str = "c172x"
-    origin_lat_deg: float = 49.8
-    origin_lon_deg: float = 24.0
-    init_altitude_ft: float = 3000.0  # above sea level
+    init_altitude_ft: float = 3000.0
     init_airspeed_kts: float = 100.0  # calibrated
     init_heading_deg: float = 90.0
 
-    # Timing
     sim_hz: float = 120.0
     sim_steps_per_action: int = 12
     max_episode_steps: int = 600
 
-    # Termination
-    success_radius_m: float = 50.0
+    success_radius_m: float = 1.0
     min_agl_m: float = 15.0
 
-    # Target spawn, relative to the initial position and heading
     target_forward_m: tuple[float, float] = (800.0, 2000.0)
     target_right_m: tuple[float, float] = (-500.0, 500.0)
     target_down_m: tuple[float, float] = (-100.0, 100.0)
 
-    # Reward
-    progress_scale: float = 0.01  # reward per metre of distance closed
+    progress_scale: float = 0.01
     success_bonus: float = 10.0
     failure_penalty: float = 10.0
 
     def __post_init__(self) -> None:
-        if not -90.0 < self.origin_lat_deg < 90.0:
-            raise ValueError(f"origin_lat_deg must be in (-90, 90), got {self.origin_lat_deg}")
-        if not -180.0 <= self.origin_lon_deg <= 180.0:
-            raise ValueError(f"origin_lon_deg must be in [-180, 180], got {self.origin_lon_deg}")
         for name in (
             "init_airspeed_kts",
             "sim_hz",
@@ -132,22 +131,33 @@ OBS_DIM = 13
 
 ACT_AILERON = 0
 ACT_ELEVATOR = 1
-ACT_DIM = 2
+ACT_RUDDER = 2
+ACT_THROTTLE = 3
+ACT_DIM = 4
 
 
 class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
     """Fly a fixed-wing aircraft into a sphere around a stationary target.
 
-    Action: ``[aileron, elevator]`` in [-1, 1], added to the level-flight trim.
-    Rudder holds its trimmed value; throttle and pitch trim are left as set by
-    the trim routine. Out-of-range actions are clipped.
+    Action: ``[aileron, elevator, rudder, throttle]`` in [-1, 1]. The zero
+    action is exactly the level-flight trim. Aileron, elevator and rudder are
+    added to their trimmed values; throttle maps piecewise linearly so that
+    -1 is idle, 0 is the trimmed setting and +1 is full power. Signs follow
+    JSBSim: positive elevator pitches the nose down, positive rudder yaws
+    it left. Out-of-range actions are clipped.
 
     Reward: ``progress_scale * (distance closed this step)``, plus
     ``success_bonus`` on reaching the target or minus ``failure_penalty`` on
     crash, numerical error or simulator failure.
 
-    Info: ``distance_m``, ``end_reason`` (:class:`EndReason`, or None while
-    running or on truncation), ``is_success`` and ``sim_time_s``.
+    Success is tested on the segment flown in each sim step, not just its end
+    points, so a pass through the sphere between two sim steps still counts.
+
+    Info: ``distance_m``, ``min_distance_m`` (closest approach so far, exact
+    to the sim-step segments), ``end_reason`` (:class:`EndReason`, or None while
+    running or on truncation), ``is_success``, ``sim_time_s``, and
+    ``aircraft_ned_m`` / ``target_ned_m`` (NED positions in metres, origin on
+    the ground below the start point).
     """
 
     metadata = {"render_modes": []}
@@ -166,23 +176,15 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
         )
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(ACT_DIM,), dtype=np.float32)
 
-        cfg = self.config
-        lat0 = math.radians(cfg.origin_lat_deg)
-        denom = 1.0 - _WGS84_E2 * math.sin(lat0) ** 2
-        # Metres per radian of latitude (meridional radius) and of longitude
-        # (prime-vertical radius times cos(lat)) on the tangent plane at the origin.
-        self._m_per_rad_lat = _WGS84_A * (1.0 - _WGS84_E2) / denom**1.5
-        self._m_per_rad_lon = _WGS84_A / math.sqrt(denom) * math.cos(lat0)
-
         self._fdm: jsbsim.FGFDMExec | None = None
         self._trim_aileron = 0.0
         self._trim_rudder = 0.0
+        self._trim_throttle = 0.0
         self._target_ned = np.zeros(3)
         self._prev_distance = 0.0
+        self._min_distance = 0.0
         self._steps = 0
         self._episode_over = False
-
-    # ------------------------------------------------------------------ API
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
@@ -226,8 +228,9 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
         self._steps = 0
         self._episode_over = False
         self._prev_distance = self._distance()
+        self._min_distance = self._prev_distance
         obs, info = self._get_obs(), self._info(self._prev_distance, None)
-        return self._get_obs(), self._info(self._prev_distance, None)
+        return obs, info
 
     def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         if self._fdm is None:
@@ -250,20 +253,28 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
         # Elevator trim lives in fcs/pitch-trim-cmd-norm, which the FCS adds on
         # top of this command, so the zero action is exactly the trimmed state.
         fdm["fcs/elevator-cmd-norm"] = float(action[ACT_ELEVATOR])
-        fdm["fcs/rudder-cmd-norm"] = self._trim_rudder
+        fdm["fcs/rudder-cmd-norm"] = float(
+            np.clip(self._trim_rudder + action[ACT_RUDDER], -1.0, 1.0)
+        )
+        # Engine 0 only; multi-engine aircraft need fcs/throttle-cmd-norm[i] for each.
+        fdm["fcs/throttle-cmd-norm"] = self._throttle_cmd(action[ACT_THROTTLE])
 
         reason: EndReason | None = None
         distance = self._prev_distance
+        prev_pos = self._aircraft_ned()
         for _ in range(cfg.sim_steps_per_action):
             if not fdm.run():
                 reason = EndReason.SIM_FAILURE
                 break
-            distance = self._distance()
+            pos = self._aircraft_ned()
+            distance = float(np.linalg.norm(self._target_ned - pos))
             if not math.isfinite(distance):
                 reason = EndReason.NUMERICAL_ERROR
                 break
-            # Checked every sim step so a fast pass through the sphere counts.
-            if distance < cfg.success_radius_m:
+            closest = _segment_point_distance(prev_pos, pos, self._target_ned)
+            self._min_distance = min(self._min_distance, closest)
+            prev_pos = pos
+            if closest < cfg.success_radius_m:
                 reason = EndReason.SUCCESS
                 break
             if fdm["position/h-agl-ft"] * FT_TO_M < cfg.min_agl_m:
@@ -293,12 +304,19 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
 
         return obs, float(reward), terminated, truncated, self._info(distance, reason)
 
+    def render(self) -> np.ndarray | None:
+        if self.render_mode is None:
+            gym.logger.warn(
+                "Call env.render() without render_mode; set render_mode in the constructor."
+            )
+            return None
+        if self._renderer is None:
+            return None
+        return self._renderer.draw()
+
     def close(self) -> None:
         self._fdm = None
         super().close()
-
-
-    # ------------------------------------------------------------ internals
 
     def _new_fdm(self) -> jsbsim.FGFDMExec:
         """Create, initialise and trim a fresh JSBSim instance.
@@ -310,13 +328,16 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
         jsbsim.FGJSBBase().debug_lvl = 0  # silence the per-instance banner
         fdm = jsbsim.FGFDMExec(None)
         fdm.set_debug_level(0)
+        if not fdm.load_planet(str(_PLANET_FILE), False):
+            raise RuntimeError(f"Could not load planet {_PLANET_FILE}")
         if not fdm.load_model(cfg.aircraft):
             raise RuntimeError(f"Could not load JSBSim model {cfg.aircraft!r}")
         fdm.disable_output()  # after load_model: the model file re-enables output
         fdm.set_dt(1.0 / cfg.sim_hz)
+        fdm["simulation/gravity-model"] = 0  # plain GM/r^2, not WGS84 J2
 
-        fdm["ic/lat-geod-deg"] = cfg.origin_lat_deg
-        fdm["ic/long-gc-deg"] = cfg.origin_lon_deg
+        fdm["ic/lat-gc-deg"] = 0.0
+        fdm["ic/long-gc-deg"] = 0.0
         fdm["ic/h-sl-ft"] = cfg.init_altitude_ft
         fdm["ic/vc-kts"] = cfg.init_airspeed_kts
         fdm["ic/psi-true-deg"] = cfg.init_heading_deg
@@ -333,23 +354,35 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
 
         self._trim_aileron = fdm["fcs/aileron-cmd-norm"]
         self._trim_rudder = fdm["fcs/rudder-cmd-norm"]
+        self._trim_throttle = fdm["fcs/throttle-cmd-norm"]
         return fdm
 
-    def _aircraft_ned(self) -> np.ndarray:
-        """Aircraft position in metres on the tangent plane at the config origin.
+    def _throttle_cmd(self, a: float) -> float:
+        """Map a throttle action in [-1, 1] to a command in [0, 1].
 
-        JSBSim's distance-from-start properties are unsigned, so lat/lon are
-        converted here instead.
+        Piecewise linear through the trim: a plain ``trim + a`` would saturate
+        at full power for most of the positive range, since trim is near 1.
+        """
+        trim = self._trim_throttle
+        if a <= 0.0:
+            return float(trim * (1.0 + a))
+        return float(trim + a * (1.0 - trim))
+
+    def _aircraft_ned(self) -> np.ndarray:
+        """Aircraft position in metres, NED, origin on the ground below the start.
+
+        North and east are ECEF z and y (the start is at lat = lon = 0). Down
+        is minus the altitude rather than ECEF x, so it agrees exactly with the
+        ground used for h-agl; the two differ by the planet's curvature, which
+        is under a millimetre over an episode.
         """
         assert self._fdm is not None
-        cfg = self.config
-        dlat = self._fdm["position/lat-geod-deg"] - cfg.origin_lat_deg
-        dlon = (self._fdm["position/long-gc-deg"] - cfg.origin_lon_deg + 180.0) % 360.0 - 180.0
+        fdm = self._fdm
         return np.array(
             [
-                math.radians(dlat) * self._m_per_rad_lat,
-                math.radians(dlon) * self._m_per_rad_lon,
-                -self._fdm["position/h-sl-meters"],
+                fdm["position/ecef-z-ft"] * FT_TO_M,
+                fdm["position/ecef-y-ft"] * FT_TO_M,
+                -fdm["position/h-sl-meters"],
             ]
         )
 
@@ -383,9 +416,10 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
         assert self._fdm is not None
         return {
             "distance_m": distance,
+            "min_distance_m": self._min_distance,
             "end_reason": reason,
             "is_success": reason is EndReason.SUCCESS,
             "sim_time_s": self._fdm["simulation/sim-time-sec"],
-            "aircraft_ned_m": self._aircraft_ned(),   # new
-            "target_ned_m": self._target_ned.copy(),  # new
+            "aircraft_ned_m": self._aircraft_ned(),
+            "target_ned_m": self._target_ned.copy(),
         }
