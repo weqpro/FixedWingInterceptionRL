@@ -22,8 +22,6 @@ import jsbsim
 import numpy as np
 from gymnasium import spaces
 
-from .render import InterceptRenderer
-
 FT_TO_M = 0.3048
 
 _PLANET_FILE = Path(__file__).with_name("flat_earth.xml")
@@ -162,7 +160,7 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
     the ground below the start point).
     """
 
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 10}
+    metadata = {"render_modes": []}
 
     def __init__(
         self, config: InterceptConfig | None = None, render_mode: str | None = None
@@ -187,7 +185,6 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
         self._min_distance = 0.0
         self._steps = 0
         self._episode_over = False
-        self._renderer: InterceptRenderer | None = None
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
@@ -233,7 +230,6 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
         self._prev_distance = self._distance()
         self._min_distance = self._prev_distance
         obs, info = self._get_obs(), self._info(self._prev_distance, None)
-        self._record_frame(None, new_episode=True)
         return obs, info
 
     def step(self, action: np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
@@ -306,7 +302,6 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
         truncated = not terminated and self._steps >= cfg.max_episode_steps
         self._episode_over = terminated or truncated
 
-        self._record_frame(reason)
         return obs, float(reward), terminated, truncated, self._info(distance, reason)
 
     def render(self) -> np.ndarray | None:
@@ -320,9 +315,6 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
         return self._renderer.draw()
 
     def close(self) -> None:
-        if self._renderer is not None:
-            self._renderer.close()
-            self._renderer = None
         self._fdm = None
         super().close()
 
@@ -431,26 +423,3 @@ class InterceptEnv(gym.Env[np.ndarray, np.ndarray]):
             "aircraft_ned_m": self._aircraft_ned(),
             "target_ned_m": self._target_ned.copy(),
         }
-
-    def _record_frame(self, reason: EndReason | None, *, new_episode: bool = False) -> None:
-        if self.render_mode is None:
-            return
-        assert self._fdm is not None
-        if self._renderer is None:
-            self._renderer = InterceptRenderer(
-                self.render_mode, self.config.success_radius_m, self.metadata["render_fps"]
-            )
-        if new_episode:
-            self._renderer.reset()
-        ned = self._aircraft_ned()
-        if np.all(np.isfinite(ned)):
-            self._renderer.record(
-                self._fdm["simulation/sim-time-sec"],
-                ned,
-                self._fdm["attitude/psi-rad"],
-                self._target_ned,
-                self._prev_distance,
-                reason,
-            )
-        if self.render_mode == "human":
-            self.render()

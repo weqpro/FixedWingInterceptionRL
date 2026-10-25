@@ -3,7 +3,7 @@ import numpy as np
 import jsbsim_env  # noqa: F401
 from jsbsim_env.envs import InterceptEnv
 from jsbsim_env.evaluate import zero_policy
-from jsbsim_env.plot3d import animate_paths, plot_paths
+from jsbsim_env.visualize import animate_paths, plot_paths
 
 
 def fly(env, policy, seed, options=None):
@@ -30,7 +30,7 @@ if __name__ == "__main__":
     plot_paths(
         {"plane": plane},
         points={"target": [target]},
-        out="flight.html",
+        out="data/flight.html",
         title=title,
         frame="ned",
     )
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     animate_paths(
         {"plane": plane, "target": target_path},
         dt=env.config.agent_dt_s,
-        out="flight_live.html",
+        out="data/flight_live.html",
         title=title,
         frame="ned",
     )

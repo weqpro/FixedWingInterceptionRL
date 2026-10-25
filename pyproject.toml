@@ -12,7 +12,6 @@ requires-python = ">=3.11"
 dependencies = [
   "gymnasium>=1.0",
   "jsbsim>=1.2",
-  "matplotlib>=3.8",
   "plotly>=5.18",
   "numpy>=1.26",
   "tensorboard>=2.15",

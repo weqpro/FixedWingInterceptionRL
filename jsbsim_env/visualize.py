@@ -1,11 +1,6 @@
-"""
-from plot3d import plot_paths, animate_paths
+"""3D flight visualisation: builds interactive HTML pages from ready-made trajectories.
 
-plane = [[0, 0, 100], [20, 1, 101], [40, 3, 103], ...]   # (x, y, z) per sample, metres
-target = [[300, 50, 90], [298, 51, 90], ...]
-
-plot_paths({"plane": plane, "target": target}, out="flight.html")
-animate_paths({"plane": plane, "target": target}, dt=0.032, out="flight_live.html")
+Pure plotting library: no simulation, no env imports.
 """
 
 import webbrowser
