@@ -12,7 +12,7 @@ A reproducible reinforcement learning pipeline built on the [JSBSim](https://git
 
 Intercepting a target with a fixed-wing aircraft is a hard continuous-control problem. The dynamics are nonlinear and underactuated, the control axes are aerodynamically coupled, and the aircraft can stall. Most RL approaches train a policy offline and then freeze it, so performance drops as soon as real flight conditions differ from the training ones.
 
-We take the *Learning on the Fly* framework [1], originally developed for quadrotors, and adapt it to:
+We take the *Learning on the Fly* framework \[1\], originally developed for quadrotors, and adapt it to:
 
 - **a different platform:** a fixed-wing aircraft instead of a quadrotor;
 - **a different task:** intercepting a target instead of tracking a trajectory;
@@ -23,16 +23,16 @@ We take the *Learning on the Fly* framework [1], originally developed for quadro
 The project is at the **pre-midterm stage**. The current goal is a working simulation environment, the first baselines and an initial benchmark.
 
 | Component | Status |
-|---|---|
+| --- | --- |
 | JSBSim setup and aircraft model check | Done |
 | Interception environment (Gymnasium API, spaces, reward) | Done |
 | Evaluation metrics (SR, TTI, miss distance, smoothness) | Done |
 | Interactive 3D visualization (static and animated) | Done |
 | Trivial baselines (zero and random policies) | Done |
 | Moving target generator | In progress |
-| Pure Pursuit baseline | In progress |
-| Offline PPO baseline | In progress |
-| First benchmark | Planned |
+| Pure Pursuit baseline | Done |
+| Offline PPO baseline | Done |
+| First benchmark | In progress |
 
 > **Note:** the target is currently **stationary**. Maneuvering targets, wind disturbances and online adaptation come after the midterm.
 
@@ -50,14 +50,14 @@ pip install -e .            # core dependencies
 pip install -e ".[dev]"     # + pytest, ruff, pre-commit
 ```
 
-Core dependencies: `gymnasium`, `jsbsim`, `numpy`, `plotly`, `tensorboard`. The JSBSim Python package ships with its aircraft models, so no extra downloads are needed.
+Core dependencies: `gymnasium`, `jsbsim`, `numpy`, `plotly`, `tensorboard`, `stable-baselines3`. The JSBSim Python package ships with its aircraft models, so no extra downloads are needed.
 
 ## Quick start
 
 ### Run the demo
 
 ```bash
-python demo.py
+python demo_p.py
 ```
 
 The demo does two things:
@@ -65,12 +65,26 @@ The demo does two things:
 1. Evaluates every enabled policy on 20 fixed scenarios and prints the metrics.
 2. Flies one episode and saves two interactive 3D views, `flight.html` (static trajectory) and `flight_live.html` (real-time animation). Both open in your browser automatically.
 
-To choose which policy is shown in 3D, change `DEMO_POLICY` at the top of `demo.py`.
+To choose which policy is shown in 3D, change `DEMO_POLICY` at the top of `demo_p.py`.
+
+If `models/ppo_intercept.zip` exists, the demo automatically evaluates the PPO policy alongside the baselines and uses it for the 3D flight.
 
 ### Compare baselines
 
 ```bash
-python -m jsbsim_env.evaluate
+python -m jsbsim_env.evaluate_p
+```
+
+### Train PPO
+
+```bash
+python train_ppo.py
+```
+
+The model is saved to `models/ppo_intercept.zip`. Intermediate checkpoints are saved every 100 000 steps under `models/`. Training progress is logged to `tensorboard_logs/`:
+
+```bash
+tensorboard --logdir tensorboard_logs
 ```
 
 ### Use the environment directly
@@ -103,7 +117,7 @@ env.close()
 Each episode starts with a **Cessna 172** (`c172x`) in trimmed level flight at 3000 ft and 100 kts, heading east. The start point is over Lviv (49.8°N, 24.0°E). The target spawns at a random offset from the start position:
 
 | Direction | Range |
-|---|---|
+| --- | --- |
 | Forward | 800 to 2000 m |
 | Right | −500 to 500 m |
 | Down | −100 to 100 m |
@@ -123,7 +137,7 @@ A fresh JSBSim instance is created and trimmed for every episode. This keeps sta
 `Box(-1, 1, shape=(2,))`
 
 | Index | Control | Meaning |
-|---|---|---|
+| --- | --- | --- |
 | 0 | Aileron | Offset from the trimmed aileron position |
 | 1 | Elevator | Elevator command on top of the pitch trim |
 
@@ -134,7 +148,7 @@ A zero action keeps the aircraft exactly in its trimmed state. Rudder and thrott
 `Box(-inf, inf, shape=(13,))`, float32, SI units.
 
 | Index | Quantity | Unit |
-|---|---|---|
+| --- | --- | --- |
 | 0 | Roll | rad |
 | 1 | Pitch | rad |
 | 2–3 | sin / cos of heading | — |
@@ -159,7 +173,7 @@ The dense progress term rewards getting closer, and the terminal terms make the 
 ### Episode termination
 
 | `end_reason` | Condition | Type |
-|---|---|---|
+| --- | --- | --- |
 | `success` | Within 50 m of the target | terminated |
 | `crash` | Below 15 m above ground | terminated |
 | `numerical_error` | Non-finite state | terminated |
@@ -169,7 +183,7 @@ The dense progress term rewards getting closer, and the terminal terms make the 
 ### Info dictionary
 
 | Key | Description |
-|---|---|
+| --- | --- |
 | `distance_m` | Current distance to the target |
 | `end_reason` | `EndReason`, or `None` while running or on truncation |
 | `is_success` | `True` if the target was reached |
@@ -206,7 +220,7 @@ obs, info = env.reset(options={"target_offset_m": (600.0, 50.0, 0.0)})  # forwar
 `evaluate_policy` runs one episode per seed. The same seeds produce the same scenarios, so every policy is tested under identical conditions. A policy is any function `obs -> action`:
 
 ```python
-from jsbsim_env.evaluate import evaluate_policy
+from jsbsim_env.evaluate_p import evaluate_policy
 
 def my_policy(obs):
     return [0.0, -0.1]  # aileron, elevator
@@ -218,7 +232,7 @@ print(metrics["success_rate"])
 ### Metrics
 
 | Metric | Definition | Better |
-|---|---|---|
+| --- | --- | --- |
 | **Success Rate (SR)** | Fraction of episodes that reached the target | ↑ |
 | **Time-to-Intercept (TTI)** | Mean simulation time to reach the target, over successful episodes only | ↓ |
 | **Miss Distance** | Mean closest approach to the target, over failed episodes only | ↓ |
@@ -228,15 +242,82 @@ print(metrics["success_rate"])
 
 ### Pure Pursuit
 
-> *Placeholder: description of the geometric guidance law, its controller structure and tuned gains.*
+A geometric guidance law that steers the aircraft toward the target at all times by minimising the Line-of-Sight (LOS) angle error. Both channels use proportional-derivative (PD) control.
+
+**Lateral channel (bank-to-turn)**
+
+The bearing to the target in the aircraft's heading frame is `atan2(right, forward)`. A desired roll angle is computed by scaling the bearing and clamping to ±35°. A PD controller then drives the aileron:
+
+```
+desired_roll = clip(k_roll × bearing,  ±max_bank)
+aileron      = kp_roll × (desired_roll − roll) − kd_roll × p
+```
+
+**Longitudinal channel**
+
+The elevation angle to the target is `atan2(−down, horizontal_distance)`. A PD controller drives the elevator. Note that in JSBSim a **negative** elevator command raises the nose:
+
+```
+desired_pitch = atan2(−down, horizontal)
+elevator      = −( kp_pitch × (desired_pitch − pitch) − kd_pitch × q )
+```
+
+**Tuned gains**
+
+| Parameter | Value | Role |
+| --- | --- | --- |
+| `k_roll` | 1.0 | LOS bearing → desired roll |
+| `max_bank_deg` | 35° | Maximum bank angle |
+| `kp_roll` | 2.0 | Roll proportional gain |
+| `kd_roll` | 0.5 | Roll derivative gain (damps via roll rate p) |
+| `kp_pitch` | 3.0 | Pitch proportional gain |
+| `kd_pitch` | 0.5 | Pitch derivative gain (damps via pitch rate q) |
 
 ### PPO
 
-> *Placeholder: network architecture, training setup, hyperparameters, training time, and how to train and load a model.*
+Offline Proximal Policy Optimisation using [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3).
 
-```bash
-# TBD: training command
-```
+**Architecture:** default SB3 `MlpPolicy` — two hidden layers of 64 units each with `tanh` activations and a shared actor-critic backbone.
+
+**Observation scaling**
+
+A `PPOTrainingWrapper` scales raw observations before they reach the policy, bringing most inputs into roughly `[−1, 1]`:
+
+| Indices | Quantity | Scale |
+| --- | --- | --- |
+| 0–6 | roll, pitch, sin/cos ψ, p, q, r | ×1.0 |
+| 7 | airspeed | ×0.02 |
+| 8 | height AGL | ×0.001 |
+| 9 | vertical speed | ×0.05 |
+| 10–12 | target forward / right / down | ×0.001 |
+
+The same scales are applied at inference time in `make_ppo_policy`, so the loaded model always sees identically scaled inputs.
+
+**Reward shaping** (training only, applied on top of the base environment reward)
+
+| Term | Formula | Weight |
+| --- | --- | --- |
+| Alignment bonus | `forward / distance` | +0.08 |
+| Offset penalty | `hypot(right, down) / distance` | −0.02 |
+| Control penalty | `Σ\|action\|` | −0.005 |
+
+The alignment bonus rewards pointing directly at the target; the offset penalty discourages lateral/vertical misalignment; the control penalty suppresses chattery surface inputs.
+
+**Hyperparameters**
+
+| Parameter | Value |
+| --- | --- |
+| Learning rate | 3 × 10⁻⁴ |
+| n\_steps | 2 048 |
+| Batch size | 64 |
+| n\_epochs | 10 |
+| γ | 0.99 |
+| GAE λ | 0.95 |
+| Clip range | 0.2 |
+| Entropy coef | 0.005 |
+| Total timesteps | 1 200 000 |
+
+Checkpoints are saved every 100 000 steps to `models/`. See the **Quick start** section for the training command.
 
 ## Visualization
 
@@ -249,7 +330,7 @@ Both functions accept NED or ENU coordinates, display East / North / Up in metre
 
 > Plotly is loaded from a CDN, so viewing the HTML files requires an internet connection.
 
-<!-- TODO: add a screenshot or GIF of flight_live.html -->
+\<!-- TODO: add a screenshot or GIF of flight\_live.html -->
 
 ---
 
@@ -262,11 +343,14 @@ FixedWingInterceptionRL/
 │   ├── envs/
 │   │   ├── __init__.py
 │   │   └── intercept.py     # InterceptEnv, InterceptConfig, EndReason
-│   ├── evaluate.py          # metrics and baseline policies
+│   ├── evaluate_p.py        # metrics and baseline policies
+│   ├── pure_pursuit.py      # geometric guidance baseline
+│   ├── ppo_policy.py        # SB3 PPO inference wrapper
 │   └── visualize.py         # 3D plots and animations (Plotly)
 ├── tests/
 │   └── test_intercept_env.py
-├── demo.py                  # evaluation + 3D demo flight
+├── demo_p.py                # evaluation + 3D demo flight
+├── train_ppo.py             # PPO training script
 ├── pyproject.toml
 └── .pre-commit-config.yaml
 ```
@@ -287,7 +371,7 @@ ruff format .        # format
 ## Team
 
 | Member | Role | Responsibilities |
-|---|---|---|
+| --- | --- | --- |
 | **Stanislav Konovalenko** | Simulation and environment | JSBSim setup and aircraft model stability, moving target generator (linear and sinusoidal trajectories), early termination rules (ground collision, critical angles) |
 | **Roman Pempus** | RL logic, PPO and baseline | Action and observation spaces, reward shaping, Gymnasium wrapper, offline PPO training, Pure Pursuit baseline |
 | **Bohdan Pavlunyshyn** | Infrastructure, metrics and visualization | Repository structure and configuration, evaluation metrics and TensorBoard / W&B tracking, flight trajectory visualization |
