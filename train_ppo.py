@@ -1,4 +1,6 @@
-"""Training script for PPO on InterceptEnv using Stable-Baselines3 with Observation Scaling & Reward Shaping."""
+"""
+Training script for PPO on InterceptEnv using Stable-Baselines3 with Observation Scaling & Reward Shaping
+"""
 
 from pathlib import Path
 import math
@@ -8,7 +10,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 
-import jsbsim_env  # noqa: F401
+import jsbsim_env
 from jsbsim_env.envs import InterceptEnv
 
 
@@ -51,7 +53,7 @@ class PPOTrainingWrapper(gym.Wrapper):
         # Scale observation (Step 1)
         scaled_obs = self._scale_obs(obs)
 
-        # Shape the Reward Function (Step 3)
+        # Shape the Reward Function
         # Base reward already has progress_scale * (distance closed this step)
         shaped_reward = float(reward)
 
@@ -60,7 +62,7 @@ class PPOTrainingWrapper(gym.Wrapper):
         right = float(obs[11]) # target right
         down = float(obs[12])  # target down
         
-        # Pointing Alignment Reward (Step 3)
+        # Pointing Alignment Reward 
         # High score when target is directly ahead (maximizes fwd / dist)
         dist = math.sqrt(fwd**2 + right**2 + down**2)
         if dist > 1e-3:

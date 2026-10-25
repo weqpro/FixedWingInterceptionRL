@@ -1,7 +1,7 @@
 import numpy as np
 from pathlib import Path
 
-import jsbsim_env  # noqa: F401
+import jsbsim_env
 from jsbsim_env.envs.intercept import InterceptEnv
 from jsbsim_env.evaluate_p import evaluate_policy, zero_policy
 from jsbsim_env.pure_pursuit import make_pure_pursuit

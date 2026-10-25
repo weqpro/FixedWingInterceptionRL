@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from gymnasium.utils.env_checker import check_env
 
-import jsbsim_env.envs as envs  # noqa: F401  (registers the env)
+import jsbsim_env.envs as envs
 from jsbsim_env.envs import EndReason, InterceptConfig, InterceptEnv
 from jsbsim_env.envs.intercept import (
     ACT_AILERON,

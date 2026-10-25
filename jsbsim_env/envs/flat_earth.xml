@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!--
+  Flat-earth approximation: JSBSim only simulates spherical planets, so this one
+  is non-rotating and so large (1e10 m) that over an episode the ground drops
+  under 1 mm and gravity is constant (9.80665 m/s^2) to 2e-7.
+-->
+<planet name="FlatEarth">
+  <semimajor_axis unit="M"> 1.0E10 </semimajor_axis>
+  <semiminor_axis unit="M"> 1.0E10 </semiminor_axis>
+  <rotation_rate unit="RAD/SEC"> 0.0 </rotation_rate>
+  <!-- (9.80665 / 0.3048) ft/s^2 * (1e10 / 0.3048 ft)^2 -->
+  <GM unit="FT3/SEC2"> 3.46318576404286084E+22 </GM>
+  <J2> 0.0 </J2>
+</planet>

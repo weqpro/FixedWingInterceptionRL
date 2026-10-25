@@ -30,7 +30,7 @@ def make_ppo_policy(model_path: str | Path):
     ], dtype=np.float32)
 
     def policy(obs: np.ndarray) -> np.ndarray:
-        # Step 1: scale observation before loading to model
+        # scale observation before loading to model
         scaled_obs = obs * scales
         action, _ = model.predict(scaled_obs, deterministic=True)
         return action.astype(np.float32)

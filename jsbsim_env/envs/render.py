@@ -21,7 +21,7 @@ class InterceptRenderer:
             self._plt = plt
             plt.ion()
             self.fig = plt.figure(figsize=(11, 5), layout="constrained")
-        else:  # rgb_array: offscreen, no window
+        else:
             self.fig = Figure(figsize=(11, 5), layout="constrained")
             FigureCanvasAgg(self.fig)
         self.ax_top, self.ax_alt = self.fig.subplots(1, 2, gridspec_kw={"width_ratios": [1.4, 1]})

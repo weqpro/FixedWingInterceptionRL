@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-import jsbsim_env  # noqa: F401  (registers the env)
+import jsbsim_env
 from jsbsim_env.envs.intercept import ACT_DIM, InterceptConfig, InterceptEnv
 from jsbsim_env.pure_pursuit import make_pure_pursuit
 from jsbsim_env.ppo_policy import make_ppo_policy
